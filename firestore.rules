@@ -1,0 +1,83 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    // Admin authorization must be assigned with trusted Firebase custom claims.
+    function isAdmin() { return signedIn() && request.auth.token.admin == true; }
+    function isModerator() { return signedIn() && (request.auth.token.moderator == true || isAdmin()); }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) && !('role' in request.resource.data.diff(resource.data).affectedKeys());
+      allow delete: if isOwner(uid) || isAdmin();
+    }
+    match /studentPassports/{uid} {
+      allow read: if isOwner(uid) || isAdmin() || (resource.data.isPublic == true && signedIn());
+      allow create, update: if isOwner(uid);
+      allow delete: if isOwner(uid) || isAdmin();
+    }
+    match /personalNotes/{noteId} {
+      allow read, create, update, delete: if signedIn() && (resource == null ? request.resource.data.userId == request.auth.uid : resource.data.userId == request.auth.uid);
+    }
+    match /plannerEvents/{eventId} {
+      allow read, create, update, delete: if signedIn() && (resource == null ? request.resource.data.userId == request.auth.uid : resource.data.userId == request.auth.uid);
+    }
+    match /plannerTasks/{taskId} {
+      allow read, create, update, delete: if signedIn() && (resource == null ? request.resource.data.userId == request.auth.uid : resource.data.userId == request.auth.uid);
+    }
+    match /flashcardDecks/{deckId} {
+      allow read, create, update, delete: if signedIn() && (resource == null ? request.resource.data.userId == request.auth.uid : resource.data.userId == request.auth.uid);
+    }
+    match /communityPosts/{postId} {
+      allow read: if signedIn() && resource.data.status == 'approved';
+      allow create: if signedIn() && request.resource.data.authorId == request.auth.uid && request.resource.data.status == 'pending';
+      allow update: if signedIn() && resource.data.authorId == request.auth.uid && request.resource.data.authorId == request.auth.uid;
+      allow delete: if signedIn() && (resource.data.authorId == request.auth.uid || isModerator());
+    }
+    match /communityComments/{commentId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.authorId == request.auth.uid;
+      allow update, delete: if signedIn() && (resource.data.authorId == request.auth.uid || isModerator());
+    }
+    match /libraryResources/{resourceId} {
+      allow read: if signedIn() && resource.data.status == 'approved';
+      allow create: if signedIn() && request.resource.data.uploadedBy == request.auth.uid && request.resource.data.status == 'pending';
+      allow update, delete: if isModerator();
+    }
+    match /studyProfiles/{uid} {
+      allow read: if isOwner(uid) || (signedIn() && resource.data.matchingEnabled == true);
+      allow create, update, delete: if isOwner(uid);
+    }
+    match /studyGroups/{groupId} {
+      allow read: if signedIn() && resource.data.status == 'active';
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if signedIn() && (resource.data.createdBy == request.auth.uid || isModerator());
+    }
+    match /studyRequests/{requestId} {
+      allow read: if signedIn() && (resource.data.requesterId == request.auth.uid || resource.data.groupOwnerId == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.requesterId == request.auth.uid;
+      allow update, delete: if signedIn() && (resource.data.requesterId == request.auth.uid || resource.data.groupOwnerId == request.auth.uid);
+    }
+    match /notifications/{notificationId} {
+      allow read, update, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isAdmin() || isModerator();
+    }
+    match /reports/{reportId} {
+      allow create: if signedIn() && request.resource.data.reporterId == request.auth.uid;
+      allow read, update, delete: if isModerator();
+    }
+    match /verificationRequests/{verificationId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isModerator());
+      allow update: if isModerator();
+    }
+    match /adminLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() || isModerator();
+      allow update, delete: if false;
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
